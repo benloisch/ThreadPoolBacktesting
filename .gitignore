@@ -1,0 +1,24 @@
+# Visual Studio build directories
+**/x64/Debug/
+**/x64/Release/
+
+#Visual Studio user specific configurations
+ThreadPoolBenchmark/.vcxproj.user
+
+# Visual Studio specific
+.vs/
+*.suo
+*.VC.db
+*.ipch
+*.log
+*.tlog
+*.ilk
+*.pdb
+*.obj
+*.cache
+*.user
+*.aps
+*.ncb
+*.opendb
+*.vscode/
+*.VC.db
