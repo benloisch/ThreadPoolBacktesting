@@ -5,6 +5,7 @@
 #include "task_thread_pool.hpp"
 #include "concurrentqueue.h"
 #include <ppl.h>
+#include <taskflow/taskflow.hpp>
 //#define _SILENCE_CXX23_ALIGNED_STORAGE_DEPRECATION_WARNING
 //#include <folly/executors/CPUThreadPoolExecutor.h>
 //#include <folly/init/Init.h>
@@ -309,6 +310,25 @@ auto oneTBB_parallel_for = [](const std::string& poolName) -> std::function<void
     };
 };
 
+// Taskflow Executor Thread Pool
+//
+// Taskflow uses a graph-based task dependency model and a thread pool under the hood.
+// Here we treat each task independently and submit them as a flat graph.
+//
+// Pros: Header-only, clean interface, internal thread pool management.
+// Cons: No explicit thread pinning support, mostly suited for graph workloads.
+//
+// https://github.com/taskflow/taskflow
+auto Taskflow_ThreadPool = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+        tf::Executor executor(threadCount);
+        tf::Taskflow taskflow;
+        for (const auto& task : tasks)
+            taskflow.emplace(task);
+        executor.run(taskflow).wait();
+    };
+};
+
 // ===================================
 // Test Functions
 // ===================================
@@ -543,7 +563,8 @@ int main() {
         {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
         {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
         {"MS_PPL_TaskGroup_parallel_for", MS_PPL_TaskGroup_parallel_for("MS_PPL_TaskGroup_parallel_for")},
-        {"oneTBB_parallel_for", oneTBB_parallel_for("oneTBB_parallel_for")}
+        {"oneTBB_parallel_for", oneTBB_parallel_for("oneTBB_parallel_for")},
+        {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")}
     };
 
     // Run all pools on all suites.
