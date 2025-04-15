@@ -72,10 +72,10 @@ using Task = std::function<void()>;
 
 
 // ===================================
-// Pool Runner Factory
+// Pool Factory
 // ===================================
 
-// Custom ThreadPool Runner (No Affinity)
+// Custom ThreadPool  (No Affinity)
 //
 // Uses your custom ThreadPool implementation with a fixed number of threads,
 // no affinity binding, and all tasks submitted individually.
@@ -92,7 +92,7 @@ auto main_ThreadPool = [](const std::string& poolName) -> std::function<void(con
     };
 };
 
-// Custom ThreadPool Runner (With Thread Affinity)
+// Custom ThreadPool  (With Thread Affinity)
 //
 // Same as `main_ThreadPool` but enables affinity binding to assign threads to specific cores.
 // Improves cache locality and reduces migration overhead on multi-core CPUs.
@@ -108,7 +108,7 @@ auto main_ThreadPool_Affinity = [](const std::string& poolName) -> std::function
     };
 };
 
-// Custom ThreadPool Runner (Batched Submission, Affinity Enabled)
+// Custom ThreadPool  (Batched Submission, Affinity Enabled)
 //
 // Extends `main_ThreadPool_Affinity` by grouping task submission into batches of 16.
 // Reduces enqueue overhead and improves throughput under high task count scenarios.
@@ -129,7 +129,7 @@ auto main_ThreadPool_Batched_16 = [](const std::string& poolName) -> std::functi
     };
 };
 
-// HPThreadPool Runner
+// HPThreadPool 
 //
 // Lightweight, high-performance thread pool using spinlocks and a fixed-size worker pool.
 // Tasks are posted with a lock-free ring buffer and processed until empty.
@@ -148,7 +148,7 @@ auto HP_ThreadPool = [](const std::string& poolName) -> std::function<void(const
     };
 };
 
-// DeveloperPaul ThreadPool Runner
+// DeveloperPaul ThreadPool 
 //
 // Mature thread pool implementation with internal task queue and worker thread management.
 // Uses a blocking queue and condition variables to distribute work.
@@ -165,7 +165,7 @@ auto DP_ThreadPool = [](const std::string& poolName) -> std::function<void(const
     };
 };
 
-// BS::thread_pool Runner
+// BS::thread_pool 
 //
 // Header-only, C++17 thread pool with support for task futures, priorities, and batching.
 // Tasks are submitted via `submit_task`, and execution is automatic.
@@ -182,7 +182,7 @@ auto BS_ThreadPool = [](const std::string& poolName) -> std::function<void(const
     };
 };
 
-// task_thread_pool Runner
+// task_thread_pool 
 //
 // High-performance thread pool that supports `submit_detach` for fire-and-forget tasks.
 // Internal synchronization uses atomics and optimized wait strategies.
@@ -243,9 +243,9 @@ auto moody_ConcurrentQueue_ThreadPool = [](const std::string& poolName) -> std::
     };
 };
 
-// Microsoft PPL Task Group Thread Pool Runner
+// Microsoft PPL Task Group Thread Pool 
 //
-// This pool runner uses Concurrency::task_group from Microsoft's Parallel Patterns Library (PPL).
+// This pool  uses Concurrency::task_group from Microsoft's Parallel Patterns Library (PPL).
 // It creates a group of tasks that run in parallel using the Windows ThreadPool backend,
 // and waits for all of them to finish. This is suitable for moderately parallel workloads
 // with dynamic task dispatch, and is backed by highly optimized Windows fibers.
@@ -263,9 +263,9 @@ auto MS_PPL_TaskGroup = [](const std::string& poolName) -> std::function<void(co
     };
 };
 
-// Microsoft PPL Parallel For Thread Pool Runner
+// Microsoft PPL Parallel For Thread Pool 
 //
-// This pool runner uses Concurrency::parallel_for to execute all tasks in the input vector
+// This pool  uses Concurrency::parallel_for to execute all tasks in the input vector
 // by parallelizing a loop over task indices. It is ideal for uniform, loop-style workloads
 // where each task performs a similar amount of work. Internally, PPL handles dynamic chunking,
 // load balancing, and work stealing.
@@ -282,7 +282,7 @@ auto MS_PPL_TaskGroup_parallel_for = [](const std::string& poolName) -> std::fun
     };
 };
 
-// oneTBB_parallel_for Runner
+// oneTBB_parallel_for 
 //
 // Uses Intel oneAPI Threading Building Blocks (oneTBB) to execute all tasks via `tbb::parallel_for`.
 // The thread count is limited by `tbb::task_arena` to ensure consistency across benchmarks.
@@ -315,11 +315,11 @@ auto oneTBB_parallel_for = [](const std::string& poolName) -> std::function<void
 
 // Define a test function type.
 // Each test function will generate its own tasks based on the provided count 
-// and then call the provided pool runner.
+// and then call the provided pool .
 using TestFunction = std::function<void(size_t, std::function<void(const std::vector<Task>&)>)>;
 
 // Example test function: Test1.
-void Test1(size_t numTasks, std::function<void(const std::vector<Task>&)> poolRunner) {
+void Test1(size_t numTasks, std::function<void(const std::vector<Task>&)> poolVector) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -330,11 +330,11 @@ void Test1(size_t numTasks, std::function<void(const std::vector<Task>&)> poolRu
                 sum += j;
         });
     }
-    poolRunner(tasks);
+    poolVector(tasks);
 }
 
 // Example test function: Test2.
-void Test2(size_t numTasks, std::function<void(const std::vector<Task>&)> poolRunner) {
+void Test2(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -345,7 +345,7 @@ void Test2(size_t numTasks, std::function<void(const std::vector<Task>&)> poolRu
                 sum += j;
         });
     }
-    poolRunner(tasks);
+    pool(tasks);
 }
 
 
@@ -372,15 +372,15 @@ struct SuiteSpec {
     std::vector<TestSpec> tests;
 };
 
-// This function runs the tests in a suite one time using the specified pool runner.
+// This function runs the tests in a suite one time using the specified pool .
 // It prints out timing for each test.
-void runSuiteOnPool(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolRunner) {
+void runSuiteOnPool(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolVector) {
     //std::cout << "Running Suite: " << suite.suiteName << std::endl;
     for (const auto& test : suite.tests) {
         //std::cout << "  Running " << test.testName
             //<< " (" << test.numTasks << " tasks)..." << std::endl;
         auto start = std::chrono::steady_clock::now();
-        test.testFunc(test.numTasks, poolRunner);
+        test.testFunc(test.numTasks, poolVector);
         auto end = std::chrono::steady_clock::now();
         double durationMs = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
         //std::cout << "    Completed in " << durationMs << " ms" << std::endl;
@@ -389,12 +389,12 @@ void runSuiteOnPool(const SuiteSpec& suite, std::function<void(const std::vector
 
 // This function runs a suite multiple times and returns the average runtime (in milliseconds)
 // for that suite.
-double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolRunner, int runs) {
+double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolVector, int runs) {
     double totalTime = 0.0;
     for (int i = 0; i < runs; i++) {
         //std::cout << "[" << suite.suiteName << "] Run " << (i + 1) << " of " << runs << std::endl;
         auto suiteStart = std::chrono::steady_clock::now();
-        runSuiteOnPool(suite, poolRunner);
+        runSuiteOnPool(suite, poolVector);
         auto suiteEnd = std::chrono::steady_clock::now();
         double suiteRunTime = std::chrono::duration_cast<std::chrono::microseconds>(suiteEnd - suiteStart).count() / 1000.0;
         //std::cout << "  Suite Run Time: " << suiteRunTime << " ms" << std::endl;
@@ -410,16 +410,16 @@ double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const st
 
 
 // ===================================
-// Pool Runner Specification & Result Structures
+// Pool Specification & Result Structures
 // ===================================
 
 
 
 
 // Encapsulates a pool runner with its name.
-struct PoolRunnerSpec {
+struct PoolSpec {
     std::string poolName;
-    std::function<void(const std::vector<Task>&)> runner;
+    std::function<void(const std::vector<Task>&)> pool;
 };
 
 // To store the average results for a given pool.
@@ -434,20 +434,20 @@ struct PoolResult {
 
 
 // ===================================
-// Main Runner for All Pools & Suites
+// Main for All Pools & Suites
 // ===================================
 
-// This function takes the defined suites and a list of pool runners,
+// This function takes the defined suites and a list of pools,
 // runs each suite runsPerSuite times on each pool, and returns a vector of PoolResult.
 std::vector<PoolResult> runAllPoolsOnSuites(
     const std::vector<SuiteSpec>& suites,
-    const std::vector<PoolRunnerSpec>& poolRunners,
+    const std::vector<PoolSpec>& pools,
     int runs)
 {
     std::vector<PoolResult> results;
 
     // Iterate each pool
-    for (const auto& poolSpec : poolRunners) {
+    for (const auto& poolSpec : pools) {
         std::ostringstream oss;
         oss << "=== Running tests on " << poolSpec.poolName << " ===";
         Debug::debug_print(oss.str());
@@ -457,7 +457,7 @@ std::vector<PoolResult> runAllPoolsOnSuites(
 
         // Iterate through all suites for this pool.
         for (const auto& suite : suites) {
-            double suiteAvg = runSuiteMultipleTimes(suite, poolSpec.runner, runs);
+            double suiteAvg = runSuiteMultipleTimes(suite, poolSpec.pool, runs);
             pr.suiteAverages.push_back(suiteAvg);
             totalPoolTime += suiteAvg;
         }
@@ -519,7 +519,7 @@ void printSummaryTable(const std::vector<SuiteSpec>& suites, std::vector<PoolRes
 
 
 // ===================================
-// Main: Define Suites, Pool Runners, and Run Tests
+// Main: Define Suites, Pools, and Run Tests
 // ===================================
 int main() {
 
@@ -532,7 +532,7 @@ int main() {
 
     // Define pool runner specifications.
     // Adding a new runner is as simple as adding another entry here.
-    std::vector<PoolRunnerSpec> poolRunners = {
+    std::vector<PoolSpec> pools = {
         {"main_ThreadPool", main_ThreadPool("main_ThreadPool")},
         {"main_ThreadPool_Affinity", main_ThreadPool_Affinity("main_ThreadPool_Affinity")},
         {"main_ThreadPool_Batched_16", main_ThreadPool_Batched_16("main_ThreadPool_Batched_16")},
@@ -547,7 +547,7 @@ int main() {
     };
 
     // Run all pools on all suites.
-    std::vector<PoolResult> results = runAllPoolsOnSuites(suites, poolRunners, runsPerSuite);
+    std::vector<PoolResult> results = runAllPoolsOnSuites(suites, pools, runsPerSuite);
 
     // Print summary table.
     printSummaryTable(suites, results);
