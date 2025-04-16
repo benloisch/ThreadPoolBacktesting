@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <Windows.h>
 #undef min // Prevent macro interference
@@ -53,6 +53,24 @@ namespace Debug {
     }
 }
 
+// ===================================
+//  Monospace‑safe time formatter
+//  (ASCII only, constant width)
+// ===================================
+inline std::string fmtTime(double ms)
+{
+    std::ostringstream os;
+    os << std::fixed;
+    if (ms >= 1.0) {
+        os << std::setprecision(1) << ms << " ms";      // e.g. 17.5 ms
+    }
+    else {
+        int us = static_cast<int>(std::round(ms * 1000.0));
+        os << us << " us";                              // e.g. 412 us
+    }
+    return os.str();                                    // ASCII only
+}
+
 // Define a Task as a callable entity.
 using Task = std::function<void()>;
 
@@ -91,11 +109,16 @@ struct PoolSpec {
 // To store the average results for a given pool.
 struct PoolResult {
     std::string poolName;
-    std::vector<double> suiteAverages; // one average per suite (in same order as suites vector)
-    double overallAverage;
+
+    // perTestAvgMs[suiteIndex][testIndex]  →  average ms for that test (across runs)
+    std::vector<std::vector<double>> perTestAvgMs;
+
+    // suiteAverages[suiteIndex]            →  average of that suite’s tests (ms)
+    std::vector<double> suiteAverages;
+
+    // overallAverage                       →  average of all suiteAverages (ms)
+    double overallAverage = 0.0;
 };
-
-
 
 
 
@@ -148,78 +171,268 @@ double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const st
 
 // This function takes the defined suites and a list of pools,
 // runs each suite runsPerSuite times on each pool, and returns a vector of PoolResult.
-std::vector<PoolResult> runAllPoolsOnSuites(
+inline std::vector<PoolResult> runAllPoolsOnSuites(
     const std::vector<SuiteSpec>& suites,
     const std::vector<PoolSpec>& pools,
-    int runs)
+    int runsPerSuite)
 {
     std::vector<PoolResult> results;
 
-    // Iterate each pool
     for (const auto& poolSpec : pools) {
-        std::ostringstream oss;
-        oss << "=== Running tests on " << poolSpec.poolName << " ===";
-        Debug::debug_print(oss.str());
+        std::ostringstream hdr;
+        hdr << "=== Running suites on " << poolSpec.poolName << " ===";
+        Debug::debug_print(hdr.str());
+
         PoolResult pr;
         pr.poolName = poolSpec.poolName;
-        double totalPoolTime = 0.0;
+        pr.perTestAvgMs.resize(suites.size());
+        pr.suiteAverages.resize(suites.size());
 
-        // Iterate through all suites for this pool.
-        for (const auto& suite : suites) {
-            double suiteAvg = runSuiteMultipleTimes(suite, poolSpec.pool, runs);
-            pr.suiteAverages.push_back(suiteAvg);
-            totalPoolTime += suiteAvg;
+        double totalAvgMs = 0.0;
+
+        // ---------- every suite ----------
+        for (size_t s = 0; s < suites.size(); ++s) {
+            const auto& suite = suites[s];
+            const size_t nTests = suite.tests.size();
+            pr.perTestAvgMs[s].assign(nTests, 0.0);
+
+            // ----- run the whole suite 'runsPerSuite' times -----
+            for (int run = 0; run < runsPerSuite; ++run) {
+                for (size_t t = 0; t < nTests; ++t) {
+                    const auto& test = suite.tests[t];
+
+                    auto start = std::chrono::steady_clock::now();
+                    test.testFunc(test.numTasks, poolSpec.pool);
+                    auto stop = std::chrono::steady_clock::now();
+
+                    const double durMs =
+                        std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count()
+                        / 1000.0;
+
+                    pr.perTestAvgMs[s][t] += durMs;
+                    /*
+                    std::ostringstream msg;
+                    msg << "  " << std::setw(18) << std::left << suite.suiteName << "::"
+                        << std::setw(25) << std::left << test.testName
+                        << "run " << (run + 1) << "/" << runsPerSuite << " : "
+                        << std::fixed << std::setprecision(3) << durMs << " ms";
+                    Debug::debug_print(msg.str());*/
+                }
+            }
+
+            // ---- convert accumulated totals into averages ----
+            double suiteSum = 0.0;
+            for (size_t t = 0; t < nTests; ++t) {
+                pr.perTestAvgMs[s][t] /= runsPerSuite;      // average for that test
+                suiteSum += pr.perTestAvgMs[s][t];
+            }
+            pr.suiteAverages[s] = suiteSum / nTests;        // average for that suite
+            totalAvgMs += pr.suiteAverages[s];
         }
 
-        pr.overallAverage = totalPoolTime / suites.size();
-        results.push_back(pr);
+        pr.overallAverage = totalAvgMs / suites.size();      // overall (raw) ms
+        results.emplace_back(std::move(pr));
     }
 
     return results;
 }
 
-void printSummaryTable(const std::vector<SuiteSpec>& suites, std::vector<PoolResult> poolResults) {
-    std::sort(poolResults.begin(), poolResults.end(),
-        [](const PoolResult& a, const PoolResult& b) {
-        return a.overallAverage < b.overallAverage;
-    });
 
-    constexpr int nameColWidth = 40;   // wider for pool names
-    constexpr int timeColWidth = 25;   // timing columns
+// ===================================
+//  Summary – BEST‑PER‑TEST then average
+//  (dynamically sized columns, ASCII‑only)
+// ===================================
+inline void printSummaryTableTaskNormalized(
+    const std::vector<SuiteSpec>& suites,
+    std::vector<PoolResult>       poolResults)
+{
+    using std::size_t;
+    const size_t P = poolResults.size();
+    const size_t S = suites.size();
 
-    std::ostringstream oss;
-    oss << "\n================== Summary Results ==================\n";
+    // ---------- 1. best time per individual test ----------
+    std::vector<std::vector<double>> bestPerTest(S);
+    for (size_t s = 0; s < S; ++s)
+        bestPerTest[s].assign(suites[s].tests.size(),
+            std::numeric_limits<double>::max());
 
-    // Header row
-    oss << std::setw(nameColWidth) << std::left << " ";
-    oss << std::setw(timeColWidth) << std::right << "total avg ";
-    for (const auto& suite : suites) {
-        oss << std::setw(timeColWidth) << std::right << suite.suiteName;
-    }
-    oss << "\n";
+    for (const auto& pr : poolResults)
+        for (size_t s = 0; s < S; ++s)
+            for (size_t t = 0; t < bestPerTest[s].size(); ++t)
+                bestPerTest[s][t] =
+                std::min(bestPerTest[s][t], pr.perTestAvgMs[s][t]);
 
-    // Result rows
-    for (const auto& pr : poolResults) {
-        oss << std::setw(nameColWidth) << std::left << (pr.poolName + ":");
+    // ---------- 2. per‑suite & overall scores ----------
+    std::vector<std::vector<double>> suiteScore(P, std::vector<double>(S));
+    std::vector<double>              overallScore(P);
 
-        // Total average
-        std::ostringstream total;
-        total << std::fixed << std::setprecision(6) << pr.overallAverage << " ms";
-        oss << std::setw(timeColWidth) << std::right << total.str();
+    for (size_t p = 0; p < P; ++p) {
+        double sumSuites = 0.0;
+        for (size_t s = 0; s < S; ++s) {
+            double sumTests = 0.0;
+            for (size_t t = 0; t < bestPerTest[s].size(); ++t)
+                sumTests += bestPerTest[s][t] /
+                poolResults[p].perTestAvgMs[s][t];
 
-        // Per-suite averages
-        for (double avg : pr.suiteAverages) {
-            std::ostringstream val;
-            val << std::fixed << std::setprecision(6) << avg << " ms";
-            oss << std::setw(timeColWidth) << std::right << val.str();
+            suiteScore[p][s] = sumTests / bestPerTest[s].size();
+            sumSuites += suiteScore[p][s];
         }
-
-        oss << "\n";
+        overallScore[p] = sumSuites / S;
     }
 
-    oss << "====================================================\n";
+    // ---------- 3. sort pools by overall score ----------
+    std::vector<size_t> order(P);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(),
+        [&](size_t a, size_t b) { return overallScore[a] > overallScore[b]; });
+
+    // ---------- 4. dynamic column widths ----------
+    size_t nameW = 0;
+    for (const auto& pr : poolResults) nameW = std::max(nameW, pr.poolName.size());
+    nameW += 2;                                           // ": "
+
+    auto fmtCell = [](double score, double ms) {
+        std::ostringstream tmp;
+        tmp << std::fixed << std::setprecision(2)
+            << score << '(' << fmtTime(ms) << ')';
+        return tmp.str();
+    };
+
+    std::vector<int> colW(S + 1, 0);                      // 0 = overall
+    colW[0] = (int)std::string("overall").size();
+    for (size_t s = 0; s < S; ++s)
+        colW[s + 1] = (int)suites[s].suiteName.size();
+
+    for (size_t p = 0; p < P; ++p) {
+        colW[0] = std::max(colW[0],
+            (int)fmtCell(overallScore[p], poolResults[p].overallAverage).size());
+        for (size_t s = 0; s < S; ++s)
+            colW[s + 1] = std::max(colW[s + 1],
+                (int)fmtCell(suiteScore[p][s], poolResults[p].suiteAverages[s]).size());
+    }
+    for (int& w : colW) w += 1;                           // 1‑space padding
+
+    // ---------- 5. header row (LEFT‑aligned) ----------
+    std::ostringstream oss;
+    oss << "\n=============== Task Normalised ===============\n";
+    oss << std::setw((int)nameW) << "";                   // blank first column
+    oss << std::setw(colW[0]) << std::left << "overall";
+    for (size_t s = 0; s < S; ++s)
+        oss << std::setw(colW[s + 1]) << std::left << suites[s].suiteName;
+    oss << '\n';
+
+    // ---------- 6. data rows ----------
+    for (size_t idx : order) {
+        const auto& pr = poolResults[idx];
+        oss << std::setw((int)nameW) << std::left << (pr.poolName + ":");
+
+        oss << std::setw(colW[0]) << std::right
+            << fmtCell(overallScore[idx], pr.overallAverage);
+
+        for (size_t s = 0; s < S; ++s)
+            oss << std::setw(colW[s + 1]) << std::right
+            << fmtCell(suiteScore[idx][s], pr.suiteAverages[s]);
+
+        oss << '\n';
+    }
+
+    oss << "===============================================\n";
     Debug::debug_print(oss.str());
 }
+
+// ===================================
+//  Summary – BEST SUITE‑AVERAGE
+// ===================================
+inline void printSummaryTableSuiteNormalized(
+    const std::vector<SuiteSpec>& suites,
+    std::vector<PoolResult>       poolResults)
+{
+    using std::size_t;
+    const size_t P = poolResults.size();
+    const size_t S = suites.size();
+
+    // ---------- 1. best average time per suite ----------
+    std::vector<double> bestSuiteMs(S, std::numeric_limits<double>::max());
+    for (const auto& pr : poolResults)
+        for (size_t s = 0; s < S; ++s)
+            bestSuiteMs[s] = std::min(bestSuiteMs[s], pr.suiteAverages[s]);
+
+    // ---------- 2. compute scores ----------
+    std::vector<std::vector<double>> suiteScore(P, std::vector<double>(S));
+    std::vector<double>              overallScore(P);
+
+    for (size_t p = 0; p < P; ++p) {
+        double sum = 0.0;
+        for (size_t s = 0; s < S; ++s) {
+            suiteScore[p][s] = bestSuiteMs[s] / poolResults[p].suiteAverages[s];
+            sum += suiteScore[p][s];
+        }
+        overallScore[p] = sum / S;
+    }
+
+    // ---------- 3. sort by score ----------
+    std::vector<size_t> order(P);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(),
+        [&](size_t a, size_t b) { return overallScore[a] > overallScore[b]; });
+
+    // ---------- 4. column widths ----------
+    size_t nameW = 0;
+    for (const auto& pr : poolResults)
+        nameW = std::max(nameW, pr.poolName.size());
+    nameW += 2; // ": "
+
+    auto fmtCell = [](double score, double ms) {
+        std::ostringstream tmp;
+        tmp << std::fixed << std::setprecision(2)
+            << score << '(' << fmtTime(ms) << ')';
+        return tmp.str();
+    };
+
+    std::vector<int> colW(S + 1, 0); // 0 = overall
+    colW[0] = (int)std::string("overall").size();
+    for (size_t s = 0; s < S; ++s)
+        colW[s + 1] = (int)suites[s].suiteName.size();
+
+    for (size_t p = 0; p < P; ++p) {
+        colW[0] = std::max(colW[0],
+            (int)fmtCell(overallScore[p], poolResults[p].overallAverage).size());
+        for (size_t s = 0; s < S; ++s)
+            colW[s + 1] = std::max(colW[s + 1],
+                (int)fmtCell(suiteScore[p][s], poolResults[p].suiteAverages[s]).size());
+    }
+
+    for (int& w : colW) w += 1; // match your layout: 1-space buffer
+
+    // ---------- 5. header row ----------
+    std::ostringstream oss;
+    oss << "\n=============== Suite Normalised ===============\n";
+    oss << std::setw((int)nameW) << ""; // blank first column
+    oss << std::setw(colW[0]) << std::left << "overall";
+    for (size_t s = 0; s < S; ++s)
+        oss << std::setw(colW[s + 1]) << std::left << suites[s].suiteName;
+    oss << '\n';
+
+    // ---------- 6. data rows ----------
+    for (size_t idx : order) {
+        const auto& pr = poolResults[idx];
+
+        oss << std::setw((int)nameW) << std::left << (pr.poolName + ":");
+
+        oss << std::setw(colW[0]) << std::right
+            << fmtCell(overallScore[idx], pr.overallAverage);
+
+        for (size_t s = 0; s < S; ++s)
+            oss << std::setw(colW[s + 1]) << std::right
+            << fmtCell(suiteScore[idx][s], pr.suiteAverages[s]);
+
+        oss << '\n';
+    }
+
+    oss << "===============================================\n";
+    Debug::debug_print(oss.str());
+}
+
 
 
 // Latency-specific structures

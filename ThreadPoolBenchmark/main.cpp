@@ -35,7 +35,7 @@
 inline size_t threadCount = 24;
 
 // Number of times to run each suite.
-inline int runsPerSuite = 10;
+inline int runsPerSuite = 5;
 
 
 // ===================================================================
@@ -520,17 +520,21 @@ int main() {
     {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")},
     {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
     {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
-    {"MS_PPL_parallel_for_TaskGroup", MS_PPL_TaskGroup_parallel_for("MS_PPL_parallel_for_TaskGroup")},
-    {"oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup")},
-    {"OpenMP_parallel_for_TaskGroup", OpenMP_parallel_for("OpenMP_parallel_for_TaskGroup")},
     */
+    //{"OpenMP_parallel_for_TaskGroup", OpenMP_parallel_for("OpenMP_parallel_for_TaskGroup")},
+    
+
+    //high performance parallel taskgroups...
+
+    {"MS_PPL_parallel_for_TaskGroup", MS_PPL_TaskGroup_parallel_for("MS_PPL_parallel_for_TaskGroup")},
+
 
     // oneTBB variants for parallel_for tuning
-    //{ "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
-    //{ "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
-    //{ "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
-    //{ "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
-    //{ "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
+    { "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
+    { "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
+    { "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
+    { "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
+    { "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
 
     //custom dynamic oneTBB
     { "oneTBB_BULK_PARALLEL_AUTO",     oneTBB_Strategy_Dispatch("oneTBB_AUTO", Strategy::BULK_PARALLEL_AUTO) },
@@ -541,7 +545,7 @@ int main() {
 
     };
 
-#define LATENCY
+//#define LATENCY
 #define SeqTaskSizeSweep
 #define HighContention
 #define SaturateOverSub
@@ -593,7 +597,9 @@ int main() {
     // Run all pools on all suites.
     std::vector<PoolResult> results = runAllPoolsOnSuites(suites, pools, runsPerSuite);
     // Print summary table.
-    printSummaryTable(suites, results);
+    printSummaryTableSuiteNormalized(suites, results);
+    printSummaryTableTaskNormalized(suites, results);   // optional second view
+
 
 #ifdef LATENCY
     std::vector<LatencySuiteSpec> latencySuites = {
@@ -610,7 +616,8 @@ int main() {
 
     std::vector<PoolResult> latencyResults = runLatencySuites(latencySuites, pools, runsPerSuite);
 
-    printLatencySummary(latencySuites, latencyResults);
+    //printSummaryTableSuiteNormalized(latencySuites, latencyResults);
+    //printSummaryTableTaskNormalized(latencySuites, latencyResults);   // optional second view
 #endif
 
     return 0;
