@@ -26,13 +26,15 @@
 #include "Helpers.h"
 #include "SequentialTaskSizeSweepTests.h"
 #include "LatencyTests.h"
+#include "HighContention.h"
+#include "SaturationOversubscription.h"
 
 
 // Global constant for all thread pool instances.
-constexpr size_t threadCount = 24;
+inline size_t threadCount = 24;
 
 // Number of times to run each suite.
-constexpr int runsPerSuite = 1;
+inline int runsPerSuite = 5;
 
 
 // ===================================================================
@@ -330,10 +332,16 @@ int main() {
 
     };
 
+//#define LATENCY
+#define SeqTaskSizeSweep
+#define HighContention
+#define SaturateOverSub
+
     // Define suites in a concise, declarative style.
     // Each suite contains tests, and each test has a name and a number of tasks to generate.
 
-    std::vector<SuiteSpec> suites = {        
+    std::vector<SuiteSpec> suites = {   
+#ifdef SeqTaskSizeSweep
         {
             "SeqTaskSizeSweep",
             {
@@ -344,8 +352,33 @@ int main() {
                 { "mixed_heavy_short_alternating", Test_mixed_heavy_short_alternating, 100 }
             }
         },
-        
+#endif
+#ifdef HighContention
+        {
+            "HighContention",
+            {
+                { "atomic_increment", Test_atomic_increment, 100000 },
+                { "mutex_locking", Test_mutex_locking, 100000 },
+                { "false_sharing", Test_false_sharing, 100000 },
+                { "contention_yield", Test_contention_yield, 100000 },
+                { "contention_spin", Test_contention_spin, 100000 },
+                { "contention_backoff", Test_contention_backoff, 100000 }
+            }
+        },
+#endif
+#ifdef SaturateOverSub
+        {
+            "SaturateOverSub",
+            {
+                { "oversub_10x", Test_oversub_10x, 0 },   // numTasks unused
+                { "oversub_50x", Test_oversub_50x, 0 },
+                { "oversub_100x", Test_oversub_100x, 0 }
+            }
+        },
+#endif
+
     };
+
 
     Debug::debug_print("====RUN MAJOR SUITES EXCEPT LATENCY====");
     // Run all pools on all suites.
@@ -353,8 +386,7 @@ int main() {
     // Print summary table.
     printSummaryTable(suites, results);
 
-
-
+#ifdef LATENCY
     std::vector<LatencySuiteSpec> latencySuites = {
     {
         "LatencyFocus", {
@@ -370,6 +402,8 @@ int main() {
     std::vector<PoolResult> latencyResults = runLatencySuites(latencySuites, pools, runsPerSuite);
 
     printLatencySummary(latencySuites, latencyResults);
+#endif
 
     return 0;
+
 }

@@ -179,14 +179,14 @@ void printSummaryTable(const std::vector<SuiteSpec>& suites, std::vector<PoolRes
     });
 
     constexpr int nameColWidth = 40;   // wider for pool names
-    constexpr int timeColWidth = 15;   // timing columns
+    constexpr int timeColWidth = 25;   // timing columns
 
     std::ostringstream oss;
     oss << "\n================== Summary Results ==================\n";
 
     // Header row
     oss << std::setw(nameColWidth) << std::left << " ";
-    oss << std::setw(timeColWidth) << std::right << "total avg";
+    oss << std::setw(timeColWidth) << std::right << "total avg ";
     for (const auto& suite : suites) {
         oss << std::setw(timeColWidth) << std::right << suite.suiteName;
     }
@@ -319,7 +319,7 @@ inline void printLatencySummary(
     std::vector<PoolResult> poolResults)
 {
     constexpr int nameColWidth = 40;
-    constexpr int colWidth = 18;
+    constexpr int colWidth = 25;
 
     std::sort(poolResults.begin(), poolResults.end(),
         [](const PoolResult& a, const PoolResult& b) {

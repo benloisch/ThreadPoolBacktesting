@@ -68,5 +68,11 @@
     <ClInclude Include="blockingconcurrentqueue.h">
       <Filter>Header Files\ThreadPools</Filter>
     </ClInclude>
+    <ClInclude Include="HighContention.h">
+      <Filter>Header Files\TestSuites</Filter>
+    </ClInclude>
+    <ClInclude Include="SaturationOversubscription.h">
+      <Filter>Header Files\TestSuites</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
