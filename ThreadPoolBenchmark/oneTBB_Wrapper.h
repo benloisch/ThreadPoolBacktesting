@@ -16,7 +16,8 @@ enum class Strategy {
     BULK_PARALLEL_AUTO,
     BULK_PARALLEL_AFFINITY,
     BULK_PARALLEL_STATIC,
-    TASK_GROUP
+    TASK_GROUP,
+    TASK_GROUP_BATCHED
 };
 
 class oneTBB_Wrapper {
@@ -54,6 +55,24 @@ private:
                     tasks[i]();
                 });
             }
+            tg.wait();
+            queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
+        });
+    }
+
+    void run_task_group_batched(const std::vector<std::function<void()>>& tasks, std::size_t taskCount) {
+        arena_.execute([this, &tasks, taskCount]() {
+            tbb::task_group tg;
+
+            size_t batchSize = std::max<size_t>(64, taskCount / (arena_.max_concurrency() * 4));
+            for (size_t i = 0; i < taskCount; i += batchSize) {
+                tg.run([&, start = i] {
+                    size_t end = std::min(start + batchSize, taskCount);
+                    for (size_t j = start; j < end; ++j)
+                        tasks[j]();
+                });
+            }
+
             tg.wait();
             queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
         });
@@ -103,6 +122,9 @@ public:
                 bulk_parallel(tasks, taskCount, ap);
                 break;
             }
+            case Strategy::TASK_GROUP_BATCHED:
+                run_task_group_batched(tasks, taskCount);
+                break;
             case Strategy::TASK_GROUP:
                 run_task_group(tasks, taskCount);
                 break;

@@ -526,17 +526,18 @@ int main() {
     */
 
     // oneTBB variants for parallel_for tuning
-    { "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
-    { "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
-    { "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
-    { "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
-    { "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
+    //{ "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
+    //{ "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
+    //{ "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
+    //{ "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
+    //{ "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
 
     //custom dynamic oneTBB
     { "oneTBB_BULK_PARALLEL_AUTO",     oneTBB_Strategy_Dispatch("oneTBB_AUTO", Strategy::BULK_PARALLEL_AUTO) },
     { "oneTBB_BULK_PARALLEL_AFFINITY", oneTBB_Strategy_Dispatch("oneTBB_AFFINITY", Strategy::BULK_PARALLEL_AFFINITY) },
     { "oneTBB_BULK_PARALLEL_STATIC",   oneTBB_Strategy_Dispatch("oneTBB_STATIC", Strategy::BULK_PARALLEL_STATIC) },
     { "oneTBB_TASK_GROUP",             oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP", Strategy::TASK_GROUP) },
+    { "oneTBB_TASK_GROUP_BATCHED",     oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP_BATCHED", Strategy::TASK_GROUP_BATCHED) },
 
     };
 
