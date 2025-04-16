@@ -67,7 +67,6 @@ namespace Debug {
 using Task = std::function<void()>;
 
 
-
 // ===================================
 // Pool Factory
 // ===================================
@@ -456,8 +455,6 @@ void Test_mixed_heavy_short_alternating(size_t numTasks, std::function<void(cons
 }
 
 
-
-
 // ===================================
 // Suite and Test Specifications
 // ===================================
@@ -628,18 +625,7 @@ int main() {
 
     // Define suites in a concise, declarative style.
     // Each suite contains tests, and each test has a name and a number of tasks to generate.
-    std::vector<SuiteSpec> suites = {
-        /*
-        {
-            "LatencyFocus",
-            {
-                { "Test_latency_noop", Test_latency_noop, 50000 },
-                { "Test_latency_short_compute", Test_latency_short_compute, 50000 },
-                { "Test_latency_mixed_spike", Test_latency_mixed_spike, 2000 },
-            }
-        },*/
-
-        
+    std::vector<SuiteSpec> suites = {        
         {
             "SequentialTaskSizeSweep",
             {
