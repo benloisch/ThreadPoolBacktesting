@@ -172,6 +172,7 @@
     <ClInclude Include="HighContention.h" />
     <ClInclude Include="LatencyTests.h" />
     <ClInclude Include="lightweightsemaphore.h" />
+    <ClInclude Include="oneTBB_Wrapper.h" />
     <ClInclude Include="SaturationOversubscription.h" />
     <ClInclude Include="SequentialTaskSizeSweepTests.h" />
     <ClInclude Include="task_thread_pool.hpp" />

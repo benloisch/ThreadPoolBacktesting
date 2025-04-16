@@ -10,6 +10,7 @@
 #define __TBB_NO_IMPLICIT_LINKAGE 1
 #include <tbb/task_arena.h>
 #include <tbb/parallel_for.h>
+#include "oneTBB_Wrapper.h"
 
 
 #include <Windows.h>
@@ -449,6 +450,35 @@ auto oneTBB_static_unrolled = [](const std::string& poolName) -> std::function<v
     };
 };
 
+// oneTBB Strategy Wrapper (Unified Dispatch)
+//
+// Encapsulates Intel oneTBB execution strategies into a single wrapper class,
+// allowing dynamic selection between `tbb::parallel_for` (with auto, static, or affinity partitioners)
+// and `tbb::task_group`.
+//
+// Internally uses a configurable `tbb::task_arena` to isolate threads, and an atomic queue size tracker
+// to provide bounded task submission and graceful shutdown behavior.
+//
+// Pros: Unified strategy control, arena-based thread isolation, partitioner flexibility.
+//       Matches other thread pools with a consistent tryEnqueue + shutdown interface.
+// Cons: queueSize_ is approximate under high contention, no persistent task queue.
+//
+// Strategies:
+//  - BULK_PARALLEL_AUTO      → tbb::parallel_for with auto_partitioner
+//  - BULK_PARALLEL_AFFINITY  → tbb::parallel_for with affinity_partitioner
+//  - BULK_PARALLEL_STATIC    → tbb::parallel_for with static_partitioner
+//  - TASK_GROUP              → Manual task_group with per-task submission
+
+auto oneTBB_Strategy_Dispatch = [](const std::string& poolName, Strategy strategy) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName, strategy](const std::vector<Task>& tasks) {
+        oneTBB_Wrapper wrapper(poolName, threadCount);
+        std::vector<std::function<void()>> wrappedTasks;
+        wrappedTasks.reserve(tasks.size());
+        for (const auto& task : tasks)
+            wrappedTasks.emplace_back(task);
+        wrapper.tryEnqueue(wrappedTasks, strategy);
+    };
+};
 
 
 // Taskflow Executor Thread Pool
@@ -502,6 +532,11 @@ int main() {
     { "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
     { "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
 
+    //custom dynamic oneTBB
+    { "oneTBB_BULK_PARALLEL_AUTO",     oneTBB_Strategy_Dispatch("oneTBB_AUTO", Strategy::BULK_PARALLEL_AUTO) },
+    { "oneTBB_BULK_PARALLEL_AFFINITY", oneTBB_Strategy_Dispatch("oneTBB_AFFINITY", Strategy::BULK_PARALLEL_AFFINITY) },
+    { "oneTBB_BULK_PARALLEL_STATIC",   oneTBB_Strategy_Dispatch("oneTBB_STATIC", Strategy::BULK_PARALLEL_STATIC) },
+    { "oneTBB_TASK_GROUP",             oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP", Strategy::TASK_GROUP) },
 
     };
 
