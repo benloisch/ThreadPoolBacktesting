@@ -74,6 +74,32 @@ struct SuiteSpec {
     std::vector<TestSpec> tests;
 };
 
+
+// ===================================
+// Pool Specification & Result Structures
+// ===================================
+
+
+
+
+// Encapsulates a pool runner with its name.
+struct PoolSpec {
+    std::string poolName;
+    std::function<void(const std::vector<Task>&)> pool;
+};
+
+// To store the average results for a given pool.
+struct PoolResult {
+    std::string poolName;
+    std::vector<double> suiteAverages; // one average per suite (in same order as suites vector)
+    double overallAverage;
+};
+
+
+
+
+
+
 // ===================================
 // Suite and Test Specifications
 // ===================================
@@ -111,26 +137,6 @@ double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const st
     //std::cout << "\nAverage run time for " << suite.suiteName << ": " << avgTime << " ms\n";
     return avgTime;
 }
-
-// ===================================
-// Pool Specification & Result Structures
-// ===================================
-
-
-
-
-// Encapsulates a pool runner with its name.
-struct PoolSpec {
-    std::string poolName;
-    std::function<void(const std::vector<Task>&)> pool;
-};
-
-// To store the average results for a given pool.
-struct PoolResult {
-    std::string poolName;
-    std::vector<double> suiteAverages; // one average per suite (in same order as suites vector)
-    double overallAverage;
-};
 
 
 
