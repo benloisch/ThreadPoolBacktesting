@@ -34,7 +34,7 @@
 inline size_t threadCount = 24;
 
 // Number of times to run each suite.
-inline int runsPerSuite = 5;
+inline int runsPerSuite = 10;
 
 
 // ===================================================================
@@ -94,6 +94,62 @@ auto main_ThreadPool_Batched_16 = [](const std::string& poolName) -> std::functi
         pool.shutdownProcessRemainingTasks(); 
     };
 };
+
+// Custom ThreadPool + oneTBB Batching (Batch Size = specified)
+//
+// Uses your custom ThreadPool for task queuing and lifecycle control,
+// but batches tasks in groups of 16 and executes each batch using
+// `tbb::parallel_for` for efficient chunked parallelism.
+//
+// Suitable for high-throughput workloads with small, uniform tasks
+// where enqueue overhead and thread contention are bottlenecks.
+//
+// Pros: Combines flexible queueing and logging with oneTBB's parallel efficiency.
+//       Reduced overhead via batched submission and chunked execution.
+// Cons: Slight latency added by batching; tasks lose direct core assignment control.
+inline std::function<void(const std::vector<Task>&)> main_oneTBB_Batched_ThreadPool(
+    const std::string& poolName,
+    size_t batchSize)
+{
+    return [poolName, batchSize](const std::vector<Task>& tasks) {
+        ThreadPool pool(poolName, threadCount, 0, false);
+        std::vector<Task> batch;
+        batch.reserve(batchSize);
+
+        for (size_t i = 0; i < tasks.size(); ++i) {
+            batch.emplace_back(tasks[i]);
+            if (batch.size() == batchSize) {
+                auto execBatch = batch;  // copy batch
+                pool.tryEnqueueTask([execBatch]() mutable {
+                    tbb::parallel_for(
+                        tbb::blocked_range<size_t>(0, execBatch.size()),
+                        [&](const tbb::blocked_range<size_t>& r) {
+                        for (size_t i = r.begin(); i < r.end(); ++i)
+                            execBatch[i]();
+                    }
+                    );
+                }, false);
+                batch.clear();
+            }
+        }
+
+        // Handle leftovers
+        if (!batch.empty()) {
+            auto execBatch = batch;
+            pool.tryEnqueueTask([execBatch]() mutable {
+                tbb::parallel_for(
+                    tbb::blocked_range<size_t>(0, execBatch.size()),
+                    [&](const tbb::blocked_range<size_t>& r) {
+                    for (size_t i = r.begin(); i < r.end(); ++i)
+                        execBatch[i]();
+                }
+                );
+            }, false);
+        }
+
+        pool.shutdownProcessRemainingTasks();
+    };
+}
 
 // HPThreadPool 
 //
@@ -292,6 +348,109 @@ auto oneTBB_TaskGroup_parallel_for = [](const std::string& poolName) -> std::fun
     };
 };
 
+// oneTBB parallel_for (Grain Size = 16)
+//
+// Executes tasks using oneTBB's `parallel_for` with a manually specified grain size of 16,
+// which controls how tasks are chunked into subranges. This reduces task overhead and
+// improves cache usage for very small tasks.
+//
+// Pros: Better load balancing for microtasks, fewer scheduler decisions.
+// Cons: Grain size must be tuned to workload; too small may increase overhead.
+auto oneTBB_parallel_for_grain16 = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+        tbb::task_arena arena(threadCount);
+        arena.execute([&] {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, tasks.size(), 16),  // grain size = 16
+                [&](const tbb::blocked_range<size_t>& r) {
+                for (size_t i = r.begin(); i < r.end(); ++i)
+                    tasks[i]();
+            }
+            );
+        });
+    };
+};
+
+// oneTBB parallel_for (Strict Arena)
+//
+// Executes tasks using a dedicated `tbb::task_arena` that is explicitly initialized and terminated.
+// Ensures full control over thread pool isolation, parallelism degree, and lifecycle.
+//
+// Pros: Thread containment, full arena lifecycle control.
+// Cons: Slightly more overhead due to arena init/teardown if used repeatedly.
+auto oneTBB_parallel_for_strict_arena = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+        tbb::task_arena arena(threadCount);
+        arena.initialize();  // Ensure explicit init
+
+        arena.execute([&] {
+            tbb::parallel_for(
+                tbb::blocked_range<size_t>(0, tasks.size(), 32),
+                [&](const tbb::blocked_range<size_t>& r) {
+                for (size_t i = r.begin(); i < r.end(); ++i)
+                    tasks[i]();
+            }
+            );
+        });
+
+        arena.terminate();  // Optional explicit shutdown
+    };
+};
+
+// oneTBB task_group Fusion (Manual Chunking)
+//
+// Uses `tbb::task_group` to manually divide the task list into fixed-size chunks,
+// each run as a separate subtask. This provides a balance between batching and flexibility.
+//
+// Pros: Manual control over batch sizes, avoids blocked_range overhead.
+// Cons: Slightly more verbose, less automatic than parallel_for.
+
+auto oneTBB_task_group_fusion = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+        tbb::task_arena arena(threadCount);
+        arena.execute([&] {
+            tbb::task_group tg;
+            const size_t chunkSize = 32;
+
+            for (size_t i = 0; i < tasks.size(); i += chunkSize) {
+                tg.run([&, start = i] {
+                    size_t end = std::min(start + chunkSize, tasks.size());
+                    for (size_t j = start; j < end; ++j)
+                        tasks[j]();
+                });
+            }
+
+            tg.wait();  // Wait for all task chunks to finish
+        });
+    };
+};
+
+// oneTBB Static Unrolled For (Fixed Step)
+//
+// Executes tasks using `tbb::parallel_for` with a fixed step size (e.g. 64),
+// manually controlling loop bounds and skipping blocked_range entirely.
+// Suitable for uniform workloads with predictable execution time.
+//
+// Pros: Extremely fast, minimal scheduler overhead.
+// Cons: Hardcoded chunk size, less adaptive to imbalance.
+
+auto oneTBB_static_unrolled = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+        tbb::task_arena arena(threadCount);
+        const size_t chunkSize = 64;
+
+        arena.execute([&] {
+            tbb::parallel_for(size_t(0), tasks.size(), chunkSize, [&](size_t i) {
+                size_t end = std::min(i + chunkSize, tasks.size());
+                for (size_t j = i; j < end; ++j)
+                    tasks[j]();
+            });
+        });
+    };
+};
+
+
+
 // Taskflow Executor Thread Pool
 //
 // Taskflow uses a graph-based task dependency model and a thread pool under the hood.
@@ -316,9 +475,14 @@ int main() {
 
     // Adding a new runner is as simple as adding another entry here.
     std::vector<PoolSpec> pools = {
+        /*
     {"main_ThreadPool", main_ThreadPool("main_ThreadPool")},
     {"main_AffinityOn_ThreadPool", main_ThreadPool_Affinity("main_AffinityOn_ThreadPool")},
     {"main_Batched_16_ThreadPool", main_ThreadPool_Batched_16("main_Batched_16_ThreadPool")},
+    //{"main_oneTBB_Batched_16_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_16_ThreadPool", 16)},
+    {"main_oneTBB_Batched_32_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_32_ThreadPool", 32)},
+    //{"main_oneTBB_Batched_64_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_64_ThreadPool", 64)},
+    //{"main_oneTBB_Batched_128_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_128_ThreadPool", 128)},
     {"HP_ThreadPool", HP_ThreadPool("HP_ThreadPool")},
     {"DP_ThreadPool", DP_ThreadPool("DP_ThreadPool")},
     {"BS_ThreadPool", BS_ThreadPool("BS_ThreadPool")},
@@ -329,10 +493,19 @@ int main() {
     {"MS_PPL_parallel_for_TaskGroup", MS_PPL_TaskGroup_parallel_for("MS_PPL_parallel_for_TaskGroup")},
     {"oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup")},
     {"OpenMP_parallel_for_TaskGroup", OpenMP_parallel_for("OpenMP_parallel_for_TaskGroup")},
+    */
+
+    // oneTBB variants for parallel_for tuning
+    { "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
+    { "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
+    { "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
+    { "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
+    { "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
+
 
     };
 
-//#define LATENCY
+#define LATENCY
 #define SeqTaskSizeSweep
 #define HighContention
 #define SaturateOverSub
