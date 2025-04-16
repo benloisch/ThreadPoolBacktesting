@@ -23,9 +23,10 @@
 #include <string>
 #include <vector>
 
-// ===================================
-// Global Configuration
-// ===================================
+#include "Helpers.h"
+#include "SequentialTaskSizeSweepTests.h"
+#include "LatencyTests.h"
+
 
 // Global constant for all thread pool instances.
 constexpr size_t threadCount = 24;
@@ -34,42 +35,9 @@ constexpr size_t threadCount = 24;
 constexpr int runsPerSuite = 1;
 
 
-
-
-// ===================================
-// Debug Logging Utilities
-// ===================================
-namespace Debug {
-    std::mutex debugMutex;
-
-    inline std::string currentTimestampNs() {
-        auto now = std::chrono::system_clock::now();
-        auto t_c = std::chrono::system_clock::to_time_t(now);
-        auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            now.time_since_epoch()) % 1'000'000'000;
-        std::tm buf;
-        localtime_s(&buf, &t_c);
-        std::ostringstream oss;
-        oss << std::put_time(&buf, "%Y-%m-%d %H:%M:%S")
-            << "." << std::setw(9) << std::setfill('0') << ns.count();
-        return oss.str();
-    }
-
-    inline void debug_print(const std::string& msg) {
-        std::scoped_lock<std::mutex> lock(debugMutex);
-        std::string output = "[" + currentTimestampNs() + "] " + msg + "\n";
-        OutputDebugStringA(output.c_str());
-    }
-}
-
-
-// Define a Task as a callable entity.
-using Task = std::function<void()>;
-
-
-// ===================================
-// Pool Factory
-// ===================================
+// ===================================================================
+//  ********** THREAD POOLS / TASK GROUPS TO BENCHMARK ***************
+// ===================================================================
 
 // Custom ThreadPool  (No Affinity)
 //
@@ -341,293 +309,33 @@ auto Taskflow_ThreadPool = [](const std::string& poolName) -> std::function<void
     };
 };
 
-// ===================================
-// Test Functions
-// ===================================
 
-// Define a test function type.
-// Each test function will generate its own tasks based on the provided count 
-// and then call the provided pool .
-using TestFunction = std::function<void(size_t, std::function<void(const std::vector<Task>&)>)>;
-
-
-
-// -----------------------------------
-// Test_noop
-// -----------------------------------
-// Generates a vector of completely empty tasks.
-// Purpose: Measure raw scheduling overhead with no actual work.
-// Use Case: Baseline comparison to isolate thread pool overhead.
-void Test_noop(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
-    std::vector<Task> tasks(numTasks, []() {});
-    pool(tasks);
-}
-
-// -----------------------------------
-// Test_short
-// -----------------------------------
-// Generates tasks that perform a short integer loop.
-// Purpose: Simulate many lightweight CPU-bound operations.
-// Each task performs ~100 integer additions.
-// Use Case: Microtask-heavy systems or small compute kernels.
-void Test_short(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
-    std::vector<Task> tasks;
-    tasks.reserve(numTasks);
-    for (size_t i = 0; i < numTasks; ++i) {
-        tasks.emplace_back([]() {
-            volatile int val = 0;
-            for (int j = 0; j < 100; ++j)
-                val += j;
-        });
-    }
-    pool(tasks);
-}
-
-// -----------------------------------
-// Test_medium
-// -----------------------------------
-// Generates tasks that perform floating-point math in a loop.
-// Purpose: Simulate medium-cost numeric workloads with L1/L2 cache fits.
-// Each task performs ~10,000 iterations of sqrt(log(x)).
-// Use Case: Financial indicators, scientific kernels, or moderate analytics.
-void Test_medium(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
-    std::vector<Task> tasks;
-    tasks.reserve(numTasks);
-    for (size_t i = 0; i < numTasks; ++i) {
-        tasks.emplace_back([]() {
-            volatile double x = 0.0001;
-            for (int j = 0; j < 10000; ++j)
-                x += std::sqrt(std::log(x + 1.0));
-        });
-    }
-    pool(tasks);
-}
-
-// -----------------------------------
-// Test_heavy
-// -----------------------------------
-// Generates tasks that perform a large nested loop with integer math.
-// Purpose: Simulate heavy compute-bound workloads with poor cache reuse.
-// Each task performs 1 million (1000x1000) multiply-adds.
-// Use Case: Stress test for compute bottlenecks and core saturation.
-void Test_heavy(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
-    std::vector<Task> tasks;
-    tasks.reserve(numTasks);
-    for (size_t i = 0; i < numTasks; ++i) {
-        tasks.emplace_back([]() {
-            volatile int x = 0;
-            for (int j = 0; j < 1000; ++j)
-                for (int k = 0; k < 1000; ++k)
-                    x += j * k;
-        });
-    }
-    pool(tasks);
-}
-
-// -----------------------------------
-// Test_mixed_heavy_short_alternating
-// -----------------------------------
-// Generates tasks alternating between a short task and a heavy task.
-// Purpose: Simulate real-world task heterogeneity and test fairness/load balancing.
-// Odd-indexed tasks are heavy compute loops; even-indexed are fast accumulation loops.
-// Use Case: Evaluate scheduling fairness, thread starvation, and responsiveness.
-void Test_mixed_heavy_short_alternating(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
-    std::vector<Task> tasks;
-    tasks.reserve(numTasks);
-    for (size_t i = 0; i < numTasks; ++i) {
-        if (i % 2 == 0) {
-            tasks.emplace_back([]() {
-                volatile int val = 0;
-                for (int j = 0; j < 100; ++j)
-                    val += j;
-            });
-        }
-        else {
-            tasks.emplace_back([]() {
-                volatile int x = 0;
-                for (int j = 0; j < 1000; ++j)
-                    for (int k = 0; k < 1000; ++k)
-                        x += j * k;
-            });
-        }
-    }
-    pool(tasks);
-}
-
-
-// ===================================
-// Suite and Test Specifications
-// ===================================
-
-// Each TestSpec holds the test name, the test function, and the number of tasks.
-struct TestSpec {
-    std::string testName;
-    TestFunction testFunc;
-    size_t numTasks;
-};
-
-// A SuiteSpec consists of the suite name and a list of tests.
-struct SuiteSpec {
-    std::string suiteName;
-    std::vector<TestSpec> tests;
-};
-
-// This function runs the tests in a suite one time using the specified pool .
-// It prints out timing for each test.
-void runSuiteOnPool(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolVector) {
-    //std::cout << "Running Suite: " << suite.suiteName << std::endl;
-    for (const auto& test : suite.tests) {
-        //std::cout << "  Running " << test.testName
-            //<< " (" << test.numTasks << " tasks)..." << std::endl;
-        auto start = std::chrono::steady_clock::now();
-        test.testFunc(test.numTasks, poolVector);
-        auto end = std::chrono::steady_clock::now();
-        double durationMs = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.0;
-        //std::cout << "    Completed in " << durationMs << " ms" << std::endl;
-    }
-}
-
-// This function runs a suite multiple times and returns the average runtime (in milliseconds)
-// for that suite.
-double runSuiteMultipleTimes(const SuiteSpec& suite, std::function<void(const std::vector<Task>&)> poolVector, int runs) {
-    double totalTime = 0.0;
-    for (int i = 0; i < runs; i++) {
-        //std::cout << "[" << suite.suiteName << "] Run " << (i + 1) << " of " << runs << std::endl;
-        auto suiteStart = std::chrono::steady_clock::now();
-        runSuiteOnPool(suite, poolVector);
-        auto suiteEnd = std::chrono::steady_clock::now();
-        double suiteRunTime = std::chrono::duration_cast<std::chrono::microseconds>(suiteEnd - suiteStart).count() / 1000.0;
-        //std::cout << "  Suite Run Time: " << suiteRunTime << " ms" << std::endl;
-        totalTime += suiteRunTime;
-    }
-    double avgTime = totalTime / runs;
-    //std::cout << "\nAverage run time for " << suite.suiteName << ": " << avgTime << " ms\n";
-    return avgTime;
-}
-
-
-
-
-
-// ===================================
-// Pool Specification & Result Structures
-// ===================================
-
-
-
-
-// Encapsulates a pool runner with its name.
-struct PoolSpec {
-    std::string poolName;
-    std::function<void(const std::vector<Task>&)> pool;
-};
-
-// To store the average results for a given pool.
-struct PoolResult {
-    std::string poolName;
-    std::vector<double> suiteAverages; // one average per suite (in same order as suites vector)
-    double overallAverage;
-};
-
-
-
-
-
-// ===================================
-// Main for All Pools & Suites
-// ===================================
-
-// This function takes the defined suites and a list of pools,
-// runs each suite runsPerSuite times on each pool, and returns a vector of PoolResult.
-std::vector<PoolResult> runAllPoolsOnSuites(
-    const std::vector<SuiteSpec>& suites,
-    const std::vector<PoolSpec>& pools,
-    int runs)
-{
-    std::vector<PoolResult> results;
-
-    // Iterate each pool
-    for (const auto& poolSpec : pools) {
-        std::ostringstream oss;
-        oss << "=== Running tests on " << poolSpec.poolName << " ===";
-        Debug::debug_print(oss.str());
-        PoolResult pr;
-        pr.poolName = poolSpec.poolName;
-        double totalPoolTime = 0.0;
-
-        // Iterate through all suites for this pool.
-        for (const auto& suite : suites) {
-            double suiteAvg = runSuiteMultipleTimes(suite, poolSpec.pool, runs);
-            pr.suiteAverages.push_back(suiteAvg);
-            totalPoolTime += suiteAvg;
-        }
-
-        pr.overallAverage = totalPoolTime / suites.size();
-        results.push_back(pr);
-    }
-
-    return results;
-}
-
-void printSummaryTable(const std::vector<SuiteSpec>& suites, std::vector<PoolResult> poolResults) {
-    std::sort(poolResults.begin(), poolResults.end(),
-        [](const PoolResult& a, const PoolResult& b) {
-        return a.overallAverage < b.overallAverage;
-    });
-
-    constexpr int nameColWidth = 40;   // wider for pool names
-    constexpr int timeColWidth = 15;   // timing columns
-
-    std::ostringstream oss;
-    oss << "\n================== Summary Results ==================\n";
-
-    // Header row
-    oss << std::setw(nameColWidth) << std::left << " ";
-    oss << std::setw(timeColWidth) << std::right << "total avg";
-    for (const auto& suite : suites) {
-        oss << std::setw(timeColWidth) << std::right << suite.suiteName;
-    }
-    oss << "\n";
-
-    // Result rows
-    for (const auto& pr : poolResults) {
-        oss << std::setw(nameColWidth) << std::left << (pr.poolName + ":");
-
-        // Total average
-        std::ostringstream total;
-        total << std::fixed << std::setprecision(6) << pr.overallAverage << " ms";
-        oss << std::setw(timeColWidth) << std::right << total.str();
-
-        // Per-suite averages
-        for (double avg : pr.suiteAverages) {
-            std::ostringstream val;
-            val << std::fixed << std::setprecision(6) << avg << " ms";
-            oss << std::setw(timeColWidth) << std::right << val.str();
-        }
-
-        oss << "\n";
-    }
-
-    oss << "====================================================\n";
-    Debug::debug_print(oss.str());
-}
-
-
-
-
-
-
-
-// ===================================
-// Main: Define Suites, Pools, and Run Tests
-// ===================================
 int main() {
+
+    // Adding a new runner is as simple as adding another entry here.
+    std::vector<PoolSpec> pools = {
+    {"main_ThreadPool", main_ThreadPool("main_ThreadPool")},
+    {"main_AffinityOn_ThreadPool", main_ThreadPool_Affinity("main_AffinityOn_ThreadPool")},
+    {"main_Batched_16_ThreadPool", main_ThreadPool_Batched_16("main_Batched_16_ThreadPool")},
+    {"HP_ThreadPool", HP_ThreadPool("HP_ThreadPool")},
+    {"DP_ThreadPool", DP_ThreadPool("DP_ThreadPool")},
+    {"BS_ThreadPool", BS_ThreadPool("BS_ThreadPool")},
+    {"task_ThreadPool", task_ThreadPool("task_ThreadPool")},
+    {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")},
+    {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
+    {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
+    {"MS_PPL_parallel_for_TaskGroup", MS_PPL_TaskGroup_parallel_for("MS_PPL_parallel_for_TaskGroup")},
+    {"oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup")},
+    {"OpenMP_parallel_for_TaskGroup", OpenMP_parallel_for("OpenMP_parallel_for_TaskGroup")},
+
+    };
 
     // Define suites in a concise, declarative style.
     // Each suite contains tests, and each test has a name and a number of tasks to generate.
+
     std::vector<SuiteSpec> suites = {        
         {
-            "SequentialTaskSizeSweep",
+            "SeqTaskSizeSweep",
             {
                 { "noop", Test_noop, 100000 },
                 { "short", Test_short, 100000 },
@@ -637,34 +345,31 @@ int main() {
             }
         },
         
-
-
     };
 
-    // Define pool runner specifications.
-    // Adding a new runner is as simple as adding another entry here.
-    std::vector<PoolSpec> pools = {
-        {"main_ThreadPool", main_ThreadPool("main_ThreadPool")},
-        {"main_ThreadPool_Affinity", main_ThreadPool_Affinity("main_ThreadPool_Affinity")},
-        {"main_ThreadPool_Batched_16", main_ThreadPool_Batched_16("main_ThreadPool_Batched_16")},
-        {"HP_ThreadPool", HP_ThreadPool("HP_ThreadPool")},
-        {"DP_ThreadPool", DP_ThreadPool("DP_ThreadPool")},
-        {"BS_ThreadPool", BS_ThreadPool("BS_ThreadPool")},
-        {"task_ThreadPool", task_ThreadPool("task_ThreadPool")},
-        {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
-        {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
-        {"MS_PPL_TaskGroup_parallel_for", MS_PPL_TaskGroup_parallel_for("MS_PPL_TaskGroup_parallel_for")},
-        {"oneTBB_TaskGroup_parallel_for", oneTBB_TaskGroup_parallel_for("oneTBB_TaskGroup_parallel_for")},
-        {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")},
-        {"OpenMP_parallel_for", OpenMP_parallel_for("OpenMP_parallel_for")},
-
-    };
-
+    Debug::debug_print("====RUN MAJOR SUITES EXCEPT LATENCY====");
     // Run all pools on all suites.
     std::vector<PoolResult> results = runAllPoolsOnSuites(suites, pools, runsPerSuite);
-
     // Print summary table.
     printSummaryTable(suites, results);
+
+
+
+    std::vector<LatencySuiteSpec> latencySuites = {
+    {
+        "LatencyFocus", {
+            { "Test_latency_noop", Test_latency_noop, 50000 },
+            { "Test_latency_short_compute", Test_latency_short_compute, 50000 },
+            { "Test_latency_mixed_spike", Test_latency_mixed_spike, 2000 }
+        }
+    }
+    };
+
+    Debug::debug_print("====RUN LATENCY SUITE====");
+
+    std::vector<PoolResult> latencyResults = runLatencySuites(latencySuites, pools, runsPerSuite);
+
+    printLatencySummary(latencySuites, latencyResults);
 
     return 0;
 }

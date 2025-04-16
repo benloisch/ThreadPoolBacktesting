@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Header Files\TestSuites">
+      <UniqueIdentifier>{344d9dae-5312-4475-bac6-ac3adebd0048}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\ThreadPools">
+      <UniqueIdentifier>{1240fc57-d132-42d5-ac03-3ccd8ddbaaff}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -20,38 +26,47 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="ThreadPool.h">
+    <ClInclude Include="Helpers.h">
       <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="SequentialTaskSizeSweepTests.h">
+      <Filter>Header Files\TestSuites</Filter>
+    </ClInclude>
+    <ClInclude Include="LatencyTests.h">
+      <Filter>Header Files\TestSuites</Filter>
     </ClInclude>
     <ClInclude Include="ThreadSafeQueue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ThreadProfiler.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\ThreadPools</Filter>
     </ClInclude>
     <ClInclude Include="hp_threadpool.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dp_threadpool.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="dp_thread_safe_queue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="BS_thread_pool.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="task_thread_pool.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="blockingconcurrentqueue.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="concurrentqueue.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\ThreadPools</Filter>
     </ClInclude>
     <ClInclude Include="lightweightsemaphore.h">
-      <Filter>Header Files</Filter>
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="task_thread_pool.hpp">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="ThreadPool.h">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="ThreadProfiler.h">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="dp_threadpool.h">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="dp_thread_safe_queue.h">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="concurrentqueue.h">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="BS_thread_pool.hpp">
+      <Filter>Header Files\ThreadPools</Filter>
+    </ClInclude>
+    <ClInclude Include="blockingconcurrentqueue.h">
+      <Filter>Header Files\ThreadPools</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
