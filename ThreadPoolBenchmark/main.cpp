@@ -6,9 +6,7 @@
 #include "concurrentqueue.h"
 #include <ppl.h>
 #include <taskflow/taskflow.hpp>
-//#define _SILENCE_CXX23_ALIGNED_STORAGE_DEPRECATION_WARNING
-//#include <folly/executors/CPUThreadPoolExecutor.h>
-//#include <folly/init/Init.h>
+#include <omp.h>
 #define __TBB_NO_IMPLICIT_LINKAGE 1
 #include <tbb/task_arena.h>
 #include <tbb/parallel_for.h>
@@ -283,7 +281,24 @@ auto MS_PPL_TaskGroup_parallel_for = [](const std::string& poolName) -> std::fun
     };
 };
 
-// oneTBB_parallel_for 
+// OpenMP Parallel For Thread Pool
+//
+// Uses OpenMP to parallelize a loop over all tasks. Threads are created and managed by the compiler/runtime.
+//
+// Pros: Zero setup, good scaling for uniform tasks, no manual thread management.
+// Cons: No persistent pool, can't enqueue irregular task graphs, less flexible.
+//
+// Requires: Compile with /openmp (MSVC) or -fopenmp (GCC/Clang)
+auto OpenMP_parallel_for = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+    return [poolName](const std::vector<Task>& tasks) {
+#pragma omp parallel for num_threads(threadCount)
+        for (int i = 0; i < static_cast<int>(tasks.size()); ++i) {
+            tasks[i]();
+        }
+    };
+};
+
+// oneTBB_TaskGroup_parallel_for 
 //
 // Uses Intel oneAPI Threading Building Blocks (oneTBB) to execute all tasks via `tbb::parallel_for`.
 // The thread count is limited by `tbb::task_arena` to ensure consistency across benchmarks.
@@ -295,7 +310,7 @@ auto MS_PPL_TaskGroup_parallel_for = [](const std::string& poolName) -> std::fun
 //
 // Requires: Linking against `tbb12.lib` (oneTBB runtime library)
 // Reference: https://github.com/oneapi-src/oneTBB
-auto oneTBB_parallel_for = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
+auto oneTBB_TaskGroup_parallel_for = [](const std::string& poolName) -> std::function<void(const std::vector<Task>&)> {
     return [poolName](const std::vector<Task>& tasks) {
         tbb::task_arena arena(threadCount);  // Match thread count with others
         arena.execute([&] {
@@ -563,8 +578,10 @@ int main() {
         {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
         {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
         {"MS_PPL_TaskGroup_parallel_for", MS_PPL_TaskGroup_parallel_for("MS_PPL_TaskGroup_parallel_for")},
-        {"oneTBB_parallel_for", oneTBB_parallel_for("oneTBB_parallel_for")},
-        {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")}
+        {"oneTBB_TaskGroup_parallel_for", oneTBB_TaskGroup_parallel_for("oneTBB_TaskGroup_parallel_for")},
+        {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")},
+        {"OpenMP_parallel_for", OpenMP_parallel_for("OpenMP_parallel_for")},
+
     };
 
     // Run all pools on all suites.
