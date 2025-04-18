@@ -25,14 +25,18 @@
 #include <vector>
 
 #include "Helpers.h"
+#include "GroupedTaskSizeSweepTests.h"
 #include "SequentialTaskSizeSweepTests.h"
 #include "LatencyTests.h"
 #include "HighContention.h"
 #include "SaturationOversubscription.h"
+#include "PerfLoadDrop.h"
+#include "BackToBack.h"
+#include "FalseSharing.h"
 
 
 // Global constant for all thread pool instances.
-inline size_t threadCount = 24;
+inline int threadCount = 24;
 
 // Number of times to run each suite.
 inline int runsPerSuite = 5;
@@ -505,64 +509,84 @@ int main() {
 
     // Adding a new runner is as simple as adding another entry here.
     std::vector<PoolSpec> pools = {
-        /*
+        
     {"main_ThreadPool", main_ThreadPool("main_ThreadPool")},
-    {"main_AffinityOn_ThreadPool", main_ThreadPool_Affinity("main_AffinityOn_ThreadPool")},
-    {"main_Batched_16_ThreadPool", main_ThreadPool_Batched_16("main_Batched_16_ThreadPool")},
+    
+    //{"main_AffinityOn_ThreadPool", main_ThreadPool_Affinity("main_AffinityOn_ThreadPool")},
+    //{"main_Batched_16_ThreadPool", main_ThreadPool_Batched_16("main_Batched_16_ThreadPool")},
     //{"main_oneTBB_Batched_16_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_16_ThreadPool", 16)},
-    {"main_oneTBB_Batched_32_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_32_ThreadPool", 32)},
+    //{"main_oneTBB_Batched_32_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_32_ThreadPool", 32)},
     //{"main_oneTBB_Batched_64_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_64_ThreadPool", 64)},
     //{"main_oneTBB_Batched_128_ThreadPool", main_oneTBB_Batched_ThreadPool("main_oneTBB_Batched_128_ThreadPool", 128)},
-    {"HP_ThreadPool", HP_ThreadPool("HP_ThreadPool")},
+    //{"HP_ThreadPool", HP_ThreadPool("HP_ThreadPool")},
     {"DP_ThreadPool", DP_ThreadPool("DP_ThreadPool")},
     {"BS_ThreadPool", BS_ThreadPool("BS_ThreadPool")},
     {"task_ThreadPool", task_ThreadPool("task_ThreadPool")},
     {"Taskflow_ThreadPool", Taskflow_ThreadPool("Taskflow_ThreadPool")},
     {"moody_ConcurrentQueue_ThreadPool", moody_ConcurrentQueue_ThreadPool("moody_ConcurrentQueue_ThreadPool")},
-    {"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
-    */
+    //{"MS_PPL_TaskGroup", MS_PPL_TaskGroup("MS_PPL_TaskGroup")},
+    
     //{"OpenMP_parallel_for_TaskGroup", OpenMP_parallel_for("OpenMP_parallel_for_TaskGroup")},
     
-
+    
     //high performance parallel taskgroups...
 
+    //{ "oneTBB_BATCHED_STREAMED",       oneTBB_Strategy_Dispatch("oneTBB_BATCHED_STREAMED", Strategy::TASK_GROUP_BATCHED_STREAMED) },
+    //{ "oneTBB_BATCHED_STREAMED_AFFINITY",       oneTBB_Strategy_Dispatch("oneTBB_BATCHED_STREAMED_AFFINITY", Strategy::TASK_GROUP_BATCHED_STREAMED_AFFINITY) },
+    
     {"MS_PPL_parallel_for_TaskGroup", MS_PPL_TaskGroup_parallel_for("MS_PPL_parallel_for_TaskGroup")},
 
 
     // oneTBB variants for parallel_for tuning
     { "oneTBB_parallel_for_TaskGroup", oneTBB_TaskGroup_parallel_for("oneTBB_parallel_for_TaskGroup") },
-    { "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
-    { "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
-    { "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
-    { "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
+    //{ "oneTBB_parallel_for_grain16",   oneTBB_parallel_for_grain16("oneTBB_parallel_for_grain16") },
+    //{ "oneTBB_strict_arena",           oneTBB_parallel_for_strict_arena("oneTBB_strict_arena") },
+    //{ "oneTBB_task_group_fusion",      oneTBB_task_group_fusion("oneTBB_task_group_fusion") },
+    //{ "oneTBB_static_unrolled",        oneTBB_static_unrolled("oneTBB_static_unrolled") },
 
     //custom dynamic oneTBB
-    { "oneTBB_BULK_PARALLEL_AUTO",     oneTBB_Strategy_Dispatch("oneTBB_AUTO", Strategy::BULK_PARALLEL_AUTO) },
-    { "oneTBB_BULK_PARALLEL_AFFINITY", oneTBB_Strategy_Dispatch("oneTBB_AFFINITY", Strategy::BULK_PARALLEL_AFFINITY) },
-    { "oneTBB_BULK_PARALLEL_STATIC",   oneTBB_Strategy_Dispatch("oneTBB_STATIC", Strategy::BULK_PARALLEL_STATIC) },
-    { "oneTBB_TASK_GROUP",             oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP", Strategy::TASK_GROUP) },
-    { "oneTBB_TASK_GROUP_BATCHED",     oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP_BATCHED", Strategy::TASK_GROUP_BATCHED) },
-
+    //{ "oneTBB_BULK_PARALLEL_AUTO",     oneTBB_Strategy_Dispatch("oneTBB_AUTO", Strategy::BULK_PARALLEL_AUTO) },
+    //{ "oneTBB_BULK_PARALLEL_AFFINITY", oneTBB_Strategy_Dispatch("oneTBB_AFFINITY", Strategy::BULK_PARALLEL_AFFINITY) },
+    //{ "oneTBB_BULK_PARALLEL_STATIC",   oneTBB_Strategy_Dispatch("oneTBB_STATIC", Strategy::BULK_PARALLEL_STATIC) },
+    //{ "oneTBB_TASK_GROUP",             oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP", Strategy::TASK_GROUP) },
+    //{ "oneTBB_TASK_GROUP_BATCHED",     oneTBB_Strategy_Dispatch("oneTBB_TASK_GROUP_BATCHED", Strategy::TASK_GROUP_BATCHED) },
+    
     };
 
-//#define LATENCY
+#define LATENCY
+#define GrpTaskSizeSweep
 #define SeqTaskSizeSweep
 #define HighContention
 #define SaturateOverSub
+//#define PerfLoadDrop
+#define BackToBack
+#define FalseSharing
 
     // Define suites in a concise, declarative style.
     // Each suite contains tests, and each test has a name and a number of tasks to generate.
 
     std::vector<SuiteSpec> suites = {   
+#ifdef GrpTaskSizeSweep
+        {
+            "GrpTaskSizeSweep",
+            {
+                { "noop", Test_grp_noop, 100000 },
+                { "short", Test_grp_short, 100000 },
+                { "medium", Test_grp_medium, 5000 },
+                { "heavy", Test_grp_heavy, 100 },
+                { "mixed_heavy_short_alternating", Test_grp_mixed_heavy_short_alternating, 100 }
+            }
+        },
+#endif
 #ifdef SeqTaskSizeSweep
         {
             "SeqTaskSizeSweep",
             {
-                { "noop", Test_noop, 100000 },
-                { "short", Test_short, 100000 },
-                { "medium", Test_medium, 5000 },
-                { "heavy", Test_heavy, 100 },
-                { "mixed_heavy_short_alternating", Test_mixed_heavy_short_alternating, 100 }
+                { "noop", Test_seq_noop, 100 },
+                { "short", Test_seq_short, 50 },
+                { "medium", Test_seq_medium, 25 },
+                { "heavy", Test_seq_heavy, 5 },
+                { "mixed_heavy_short_alternating", Test_seq_mixed_heavy_short_alternating, 5 }
             }
         },
 #endif
@@ -586,6 +610,39 @@ int main() {
                 { "oversub_10x", Test_oversub_10x, 0 },   // numTasks unused
                 { "oversub_50x", Test_oversub_50x, 0 },
                 { "oversub_100x", Test_oversub_100x, 0 }
+            }
+        },
+#endif
+#ifdef PerfLoadDrop
+        {
+            "PerfLoadDrop", 
+            {
+                { "dropoff_noop",            Test_perf_dropoff_noop,            10 },
+                { "dropoff_short_compute",   Test_perf_dropoff_short_compute,   10 },
+                { "dropoff_heavy_compute",   Test_perf_dropoff_heavy_compute,   10 },
+                { "dropoff_mixed",           Test_perf_dropoff_mixed,           10 },
+                { "dropoff_jitter",          Test_perf_dropoff_jitter,          10 }
+            }
+        },
+#endif
+#ifdef BackToBack
+        {
+            "BackToBack", {
+                { "back_to_back_noop",           Test_back_to_back_noop,           20000 },
+                { "back_to_back_short_compute",  Test_back_to_back_short_compute,  20000 },
+                { "back_to_back_heavy_compute",  Test_back_to_back_heavy_compute,  20000 },
+                { "back_to_back_mixed",          Test_back_to_back_mixed,          20000 }
+            }
+        },
+#endif
+#ifdef FalseSharing
+        {
+            "FalseSharing", 
+            {
+                { "false_sharing_shared_counter",   Test_false_sharing_shared_counter,   100000 },
+                { "false_sharing_adjacent_slots",   Test_false_sharing_adjacent_slots,   100000 },
+                { "false_sharing_padded_slots",     Test_false_sharing_padded_slots,     100000 },
+                { "false_sharing_stride_slots",     Test_false_sharing_stride_slots,     100000 }
             }
         },
 #endif

@@ -163,17 +163,21 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="BackToBack.h" />
     <ClInclude Include="blockingconcurrentqueue.h" />
     <ClInclude Include="BS_thread_pool.hpp" />
     <ClInclude Include="concurrentqueue.h" />
     <ClInclude Include="dp_threadpool.h" />
     <ClInclude Include="dp_thread_safe_queue.h" />
+    <ClInclude Include="FalseSharing.h" />
     <ClInclude Include="Helpers.h" />
     <ClInclude Include="HighContention.h" />
     <ClInclude Include="LatencyTests.h" />
     <ClInclude Include="lightweightsemaphore.h" />
     <ClInclude Include="oneTBB_Wrapper.h" />
+    <ClInclude Include="PerfLoadDrop.h" />
     <ClInclude Include="SaturationOversubscription.h" />
+    <ClInclude Include="GroupedTaskSizeSweepTests.h" />
     <ClInclude Include="SequentialTaskSizeSweepTests.h" />
     <ClInclude Include="task_thread_pool.hpp" />
     <ClInclude Include="ThreadPool.h" />

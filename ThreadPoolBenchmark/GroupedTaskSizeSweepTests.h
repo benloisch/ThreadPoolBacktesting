@@ -8,11 +8,9 @@
 // Generates a vector of completely empty tasks.
 // Purpose: Measure raw scheduling overhead with no actual work.
 // Use Case: Baseline comparison to isolate thread pool overhead.
-void Test_seq_noop(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
+void Test_grp_noop(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks(numTasks, []() {});
-    for (const auto& task : tasks) {
-        pool(std::vector<Task>{ task }); // submit a vector with a single task
-    }
+    pool(tasks);
 }
 
 // -----------------------------------
@@ -22,7 +20,7 @@ void Test_seq_noop(size_t numTasks, std::function<void(const std::vector<Task>&)
 // Purpose: Simulate many lightweight CPU-bound operations.
 // Each task performs ~100 integer additions.
 // Use Case: Microtask-heavy systems or small compute kernels.
-void Test_seq_short(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
+void Test_grp_short(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -32,9 +30,7 @@ void Test_seq_short(size_t numTasks, std::function<void(const std::vector<Task>&
                 val += j;
         });
     }
-    for (const auto& task : tasks) {
-        pool(std::vector<Task>{ task }); // submit a vector with a single task
-    }
+    pool(tasks);
 }
 
 // -----------------------------------
@@ -44,7 +40,7 @@ void Test_seq_short(size_t numTasks, std::function<void(const std::vector<Task>&
 // Purpose: Simulate medium-cost numeric workloads with L1/L2 cache fits.
 // Each task performs ~10,000 iterations of sqrt(log(x)).
 // Use Case: Financial indicators, scientific kernels, or moderate analytics.
-void Test_seq_medium(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
+void Test_grp_medium(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -54,9 +50,7 @@ void Test_seq_medium(size_t numTasks, std::function<void(const std::vector<Task>
                 x += std::sqrt(std::log(x + 1.0));
         });
     }
-    for (const auto& task : tasks) {
-        pool(std::vector<Task>{ task }); // submit a vector with a single task
-    }
+    pool(tasks);
 }
 
 // -----------------------------------
@@ -66,7 +60,7 @@ void Test_seq_medium(size_t numTasks, std::function<void(const std::vector<Task>
 // Purpose: Simulate heavy compute-bound workloads with poor cache reuse.
 // Each task performs 1 million (1000x1000) multiply-adds.
 // Use Case: Stress test for compute bottlenecks and core saturation.
-void Test_seq_heavy(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
+void Test_grp_heavy(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -77,9 +71,7 @@ void Test_seq_heavy(size_t numTasks, std::function<void(const std::vector<Task>&
                     x += j * k;
         });
     }
-    for (const auto& task : tasks) {
-        pool(std::vector<Task>{ task }); // submit a vector with a single task
-    }
+    pool(tasks);
 }
 
 // -----------------------------------
@@ -89,7 +81,7 @@ void Test_seq_heavy(size_t numTasks, std::function<void(const std::vector<Task>&
 // Purpose: Simulate real-world task heterogeneity and test fairness/load balancing.
 // Odd-indexed tasks are heavy compute loops; even-indexed are fast accumulation loops.
 // Use Case: Evaluate scheduling fairness, thread starvation, and responsiveness.
-void Test_seq_mixed_heavy_short_alternating(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
+void Test_grp_mixed_heavy_short_alternating(size_t numTasks, std::function<void(const std::vector<Task>&)> pool) {
     std::vector<Task> tasks;
     tasks.reserve(numTasks);
     for (size_t i = 0; i < numTasks; ++i) {
@@ -109,9 +101,7 @@ void Test_seq_mixed_heavy_short_alternating(size_t numTasks, std::function<void(
             });
         }
     }
-    for (const auto& task : tasks) {
-        pool(std::vector<Task>{ task }); // submit a vector with a single task
-    }
+    pool(tasks);
 }
 
 

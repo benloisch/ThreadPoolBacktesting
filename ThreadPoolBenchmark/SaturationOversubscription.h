@@ -1,7 +1,7 @@
 #pragma once
 #include "Helpers.h"
 
-extern inline size_t threadCount;
+extern inline int threadCount;
 
 // -----------------------------------
 // Oversubscription Test Generator

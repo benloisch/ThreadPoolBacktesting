@@ -17,7 +17,9 @@ enum class Strategy {
     BULK_PARALLEL_AFFINITY,
     BULK_PARALLEL_STATIC,
     TASK_GROUP,
-    TASK_GROUP_BATCHED
+    TASK_GROUP_BATCHED,
+    TASK_GROUP_BATCHED_STREAMED,
+    TASK_GROUP_BATCHED_STREAMED_AFFINITY
 };
 
 class oneTBB_Wrapper {
@@ -78,9 +80,135 @@ private:
         });
     }
 
+    void run_task_group_batched_streamed_affinity(const std::vector<std::function<void()>>& tasks,
+        std::size_t taskCount,
+        std::size_t flushBatchSize = 64)
+    {
+        static thread_local tbb::affinity_partitioner ap;  // must persist across calls
+
+        // Large batch: submit immediately
+        if (taskCount > flushBatchSize) {
+            queueSize_.fetch_add(taskCount, std::memory_order_relaxed);
+
+            arena_.execute([this, tasks = std::move(tasks), taskCount]() {
+                tbb::parallel_for(
+                    tbb::blocked_range<std::size_t>(0, taskCount),
+                    [&](const tbb::blocked_range<std::size_t>& range) {
+                    for (std::size_t i = range.begin(); i < range.end(); ++i)
+                        tasks[i]();
+                },
+                    ap
+                );
+                queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
+            });
+
+            return;
+        }
+
+        // Small batch: accumulate and flush when enough
+        static thread_local std::vector<std::function<void()>> buffer;
+
+        buffer.insert(buffer.end(), tasks.begin(), tasks.end());
+
+        if (buffer.size() >= flushBatchSize) {
+            std::vector<std::function<void()>> batch;
+            batch.swap(buffer);
+
+            std::size_t batchCount = batch.size();
+            queueSize_.fetch_add(batchCount, std::memory_order_relaxed);
+
+            arena_.execute([this, batch = std::move(batch), batchCount]() {
+                tbb::parallel_for(
+                    tbb::blocked_range<std::size_t>(0, batchCount),
+                    [&](const tbb::blocked_range<std::size_t>& range) {
+                    for (std::size_t i = range.begin(); i < range.end(); ++i)
+                        batch[i]();
+                },
+                    tbb::auto_partitioner{}
+                );
+                queueSize_.fetch_sub(batchCount, std::memory_order_relaxed);
+            });
+        }
+    }
+
+    void run_task_group_batched_streamed(const std::vector<std::function<void()>>& tasks,
+        std::size_t taskCount,
+        std::size_t flushBatchSize = 64)
+    {
+        // Large batch: submit immediately
+        if (taskCount > flushBatchSize) {
+            queueSize_.fetch_add(taskCount, std::memory_order_relaxed);
+
+            arena_.execute([this, tasks = std::move(tasks), taskCount]() {
+                tbb::parallel_for(
+                    tbb::blocked_range<std::size_t>(0, taskCount),
+                    [&](const tbb::blocked_range<std::size_t>& range) {
+                    for (std::size_t i = range.begin(); i < range.end(); ++i)
+                        tasks[i]();
+                },
+                    tbb::auto_partitioner{}
+                );
+                queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
+            });
+
+            return;
+        }
+
+        // Small batch: accumulate and flush when enough
+        static thread_local std::vector<std::function<void()>> buffer;
+
+        buffer.insert(buffer.end(), tasks.begin(), tasks.end());
+
+        if (buffer.size() >= flushBatchSize) {
+            std::vector<std::function<void()>> batch;
+            batch.swap(buffer);
+
+            std::size_t batchCount = batch.size();
+            queueSize_.fetch_add(batchCount, std::memory_order_relaxed);
+
+            arena_.execute([this, batch = std::move(batch), batchCount]() {
+                tbb::parallel_for(
+                    tbb::blocked_range<std::size_t>(0, batchCount),
+                    [&](const tbb::blocked_range<std::size_t>& range) {
+                    for (std::size_t i = range.begin(); i < range.end(); ++i)
+                        batch[i]();
+                },
+                    tbb::auto_partitioner{}
+                );
+                queueSize_.fetch_sub(batchCount, std::memory_order_relaxed);
+            });
+        }
+    }
+
+
+
+    void flush_streamed_tasks() {
+        static thread_local std::vector<std::function<void()>> buffer;
+
+        if (buffer.empty()) return;
+
+        std::vector<std::function<void()>> batch;
+        batch.swap(buffer);
+
+        std::size_t taskCount = batch.size();
+        queueSize_.fetch_add(taskCount, std::memory_order_relaxed);
+
+        arena_.execute([this, batch = std::move(batch), taskCount]() {
+            tbb::parallel_for(
+                tbb::blocked_range<std::size_t>(0, taskCount),
+                [&](const tbb::blocked_range<std::size_t>& range) {
+                for (std::size_t i = range.begin(); i < range.end(); ++i)
+                    batch[i]();
+            }
+            );
+            queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
+        });
+    }
+
+
 
 public:
-    oneTBB_Wrapper(const std::string& name, std::size_t threadCount, std::size_t maxQueueSize = 0)
+    oneTBB_Wrapper(const std::string& name, int threadCount, std::size_t maxQueueSize = 0)
         : name_(name)
         , arena_(threadCount)
         , queueSize_(0)
@@ -128,6 +256,12 @@ public:
             case Strategy::TASK_GROUP:
                 run_task_group(tasks, taskCount);
                 break;
+            case Strategy::TASK_GROUP_BATCHED_STREAMED:
+                run_task_group_batched_streamed(tasks, taskCount);
+                return true;
+            case Strategy::TASK_GROUP_BATCHED_STREAMED_AFFINITY:
+                run_task_group_batched_streamed_affinity(tasks, taskCount);
+                return true;
             default:
                 queueSize_.fetch_sub(taskCount, std::memory_order_relaxed);
                 return false;
@@ -137,6 +271,11 @@ public:
     }
 
     void shutdownProcessRemainingTasks() {
+
+        // Flush any partial batches in this thread
+        flush_streamed_tasks();
+
+
         // Wait until the queue is fully drained
         while (queueSize_.load(std::memory_order_relaxed) > 0) {
             std::this_thread::yield();  // Allow other threads to continue work
@@ -145,5 +284,6 @@ public:
         // Optional: forcibly terminate the arena (if you don’t reuse it)
         // arena_.terminate();  // not usually necessary unless doing manual arena mgmt
     }
+
 
 };
